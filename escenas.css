@@ -1,0 +1,114 @@
+/* escenas.css — estética editorial: papel, trazo fino, sin sombras, un acento.
+   Los tokens heredan los de la página (nota.html) si existen. */
+.escena{
+  --esc-fondo: var(--panel, #fffdf8);
+  --esc-papel: var(--bg, #f7f5f0);
+  --esc-tinta: var(--ink, #1d1c1a);
+  --esc-suave: var(--soft, #5d5a53);
+  --esc-tenue: var(--faint, #8f8b82);
+  --esc-linea: var(--line, #e2ddd2);
+  --esc-acento: var(--accent, #b4441c);
+  --esc-neg: #5b6b7b;
+  --esc-serif: "Instrument Serif", Georgia, serif;
+  --esc-sans: Geist, system-ui, sans-serif;
+  --esc-mono: "Geist Mono", ui-monospace, monospace;
+  font: 14px/1.45 var(--esc-sans);
+  color: var(--esc-tinta);
+  background: var(--esc-fondo);
+  border: 1px solid var(--esc-linea);
+  border-radius: 8px;
+  margin: 18px 0 26px;
+  overflow: hidden;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .escena{ --esc-neg:#8fa0b0 } }
+:root[data-theme="dark"] .escena{ --esc-neg:#8fa0b0 }
+.escena *{ box-sizing:border-box }
+.escena button{ font:inherit; color:inherit }
+
+.esc-cab{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px; padding:12px 18px; border-bottom:1px solid var(--esc-linea) }
+.esc-tit{ font:400 24px/1.1 var(--esc-serif); margin-right:auto }
+.esc-capas, .esc-acc{ display:flex; flex-wrap:wrap; gap:6px; align-items:center }
+.esc-chip, .esc-bt{ border:1px solid var(--esc-linea); background:transparent; border-radius:6px; padding:3px 9px; cursor:pointer; font:500 12px var(--esc-mono)!important; color:var(--esc-suave)!important }
+.esc-chip.on{ border-color:var(--esc-tinta); color:var(--esc-tinta)!important }
+.esc-bt:hover, .esc-chip:hover{ border-color:var(--esc-suave) }
+.esc-bt.on{ border-color:var(--esc-tinta); color:var(--esc-tinta)!important }
+.esc-bt.fuerte{ border-color:var(--esc-tinta); color:var(--esc-tinta)!important }
+.esc-aviso{ font:500 11px var(--esc-mono); letter-spacing:.06em; text-transform:uppercase; color:var(--esc-acento); border:1px solid var(--esc-acento); border-radius:4px; padding:2px 7px }
+
+.esc-ysi{ padding:10px 18px; border-bottom:1px solid var(--esc-linea); background:var(--esc-papel); display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:8px 26px }
+.esc-ysi[hidden]{ display:none }
+.esc-par, .esc-var{ display:flex; align-items:center; gap:10px; min-width:0 }
+.esc-par input[type=range], .esc-var input[type=range]{ flex:1; min-width:80px; accent-color:var(--esc-acento) }
+.esc-par input[type=number]{ flex:1; min-width:80px; font:13px var(--esc-mono); background:var(--esc-fondo); color:var(--esc-tinta); border:1px solid var(--esc-linea); border-radius:4px; padding:2px 6px }
+.esc-n{ font:500 13px var(--esc-mono); min-width:2.2em }
+.esc-v{ font:13px var(--esc-mono); min-width:7.5em; text-align:right; white-space:nowrap }
+.esc-nota{ color:var(--esc-tenue); font-size:12.5px }
+.esc-ysi-pie{ grid-column:1/-1; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+
+.esc-vars{ padding:10px 18px; border-bottom:1px solid var(--esc-linea); display:flex; flex-direction:column; gap:6px }
+.esc-var .esc-nota{ white-space:nowrap }
+
+.esc-lect{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; padding:12px 18px; border-bottom:1px solid var(--esc-linea) }
+.esc-card{ border:1px solid var(--esc-linea); border-radius:6px; padding:7px 11px; background:var(--esc-fondo) }
+.esc-card.pend{ border-style:dashed; background:transparent }
+.esc-card .k{ font:500 10.5px var(--esc-mono); letter-spacing:.07em; text-transform:uppercase; color:var(--esc-tenue) }
+.esc-card .v{ font:500 17px var(--esc-mono); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.esc-card.pend .v{ color:var(--esc-tenue) }
+
+.esc-cuerpo{ display:grid; grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr); border-bottom:1px solid var(--esc-linea) }
+.esc-3d{ position:relative; height:480px; overflow:hidden; background:var(--esc-papel); touch-action:none; border-right:1px solid var(--esc-linea) }
+.esc-3d .esc-gl{ display:block }
+.esc-3d .esc-etq{ position:absolute; inset:0; pointer-events:none }
+.esc-lbl{ font:12px var(--esc-mono); color:var(--esc-suave); white-space:nowrap; padding:0 3px; background:color-mix(in srgb, var(--esc-papel) 80%, transparent); border-radius:3px }
+.esc-lbl.acc{ color:var(--esc-acento) }
+.esc-leyenda{ position:absolute; left:12px; bottom:10px; display:flex; align-items:center; gap:6px; font:11px var(--esc-mono); color:var(--esc-tenue); pointer-events:none }
+.esc-leyenda i{ display:block; width:90px; height:8px; border:1px solid var(--esc-linea); background:linear-gradient(90deg, var(--esc-papel), color-mix(in srgb, var(--esc-tinta) 75%, var(--esc-papel))) }
+
+.esc-lado{ display:flex; flex-direction:column; min-width:0 }
+.esc-formula{ padding:12px 16px 6px; border-bottom:1px solid var(--esc-linea); min-height:110px; overflow-x:auto }
+.esc-fk{ font:500 11px var(--esc-mono); letter-spacing:.06em; text-transform:uppercase; color:var(--esc-tenue) }
+.esc-tex .katex-display{ margin:.45em 0; overflow-x:auto; overflow-y:hidden }
+.esc-tex.planteo{ color:var(--esc-suave) }
+.esc-tex.pendiente{ color:var(--esc-tenue) }
+.esc-graficas{ display:flex; flex-direction:column; flex:1 }
+.esc-graf{ height:170px; border-bottom:1px solid var(--esc-linea); flex:1; min-height:150px }
+.esc-graf:last-child{ border-bottom:0 }
+.esc-graf canvas{ width:100%; height:100%; display:block }
+
+.esc-aps{ display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:10px; padding:14px 18px 16px; background:var(--esc-papel) }
+.esc-ap{ border:1px solid var(--esc-linea); border-radius:6px; background:var(--esc-fondo); padding:0 12px 10px; min-width:0 }
+.esc-ap.activo{ border-color:var(--esc-tinta) }
+.esc-ap-cab{ all:unset; display:flex; gap:8px; align-items:baseline; width:100%; padding:9px 0 6px; cursor:pointer }
+.esc-ap-cab .k{ font:500 13px var(--esc-mono); color:var(--esc-acento) }
+.esc-ap-cab .t{ flex:1; font-weight:500 }
+.esc-ap-cab .est{ font:11px var(--esc-mono); color:var(--esc-tenue); white-space:nowrap }
+.esc-ap.hecho .est{ color:var(--esc-tinta) }
+.esc-q{ margin:6px 0 }
+.esc-qt{ color:var(--esc-suave); font-size:13px }
+.esc-in{ width:100%; margin-top:3px; font:14px var(--esc-mono); background:var(--esc-papel); color:var(--esc-tinta); border:1px solid var(--esc-linea); border-radius:4px; padding:5px 8px }
+.esc-in:focus{ outline:none; border-color:var(--esc-tinta) }
+.esc-q.mal .esc-in, .esc-q.mal .esc-ops{ border-color:var(--esc-acento) }
+.esc-ops{ display:flex; flex-wrap:wrap; gap:5px; margin-top:3px; border:1px solid transparent; border-radius:5px }
+.esc-op{ border:1px solid var(--esc-linea); background:transparent; border-radius:5px; padding:3px 8px; font-size:13px; cursor:pointer; text-align:left }
+.esc-op.on{ border-color:var(--esc-tinta); background:var(--esc-papel) }
+.esc-ap-pie{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px }
+.esc-msg{ font:500 12px var(--esc-mono) }
+.esc-msg.ok{ color:var(--esc-tinta) }
+.esc-msg.mal{ color:var(--esc-acento) }
+.esc-sol{ font-size:13px }
+.esc-sol b{ font:500 13px var(--esc-mono) }
+.esc-sol > div{ margin:3px 0 }
+.esc-error{ color:var(--esc-acento, #b4441c); font:13px var(--esc-mono, monospace); padding:12px }
+
+@media (max-width:860px){
+  .esc-cuerpo{ grid-template-columns:1fr }
+  .esc-3d{ height:340px; border-right:0; border-bottom:1px solid var(--esc-linea) }
+  .esc-cab, .esc-vars, .esc-lect, .esc-ysi, .esc-aps{ padding-left:12px; padding-right:12px }
+  .esc-lect{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .esc-var{ flex-wrap:wrap }
+  .esc-var .esc-nota{ width:100% }
+}
+@media print{
+  .esc-acc, .esc-capas, .esc-ap-pie, .esc-vars input{ display:none }
+  .escena{ break-inside:avoid-page }
+}
