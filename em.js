@@ -78,6 +78,36 @@ const FUENTES = {
       qenc: Rg => (Rg > R ? lt : 0),
     };
   },
+  // conductor cilíndrico macizo de eje z por (x, y) = pos, radio R, corriente total I (signo = sentido en z)
+  // con J(s) = J0·(s/R)^n. J0 = (n+2)·I/(2πR²). ienc(Rg) = corriente por un círculo coaxial de radio Rg.
+  conductor({ R, I, n = 1, pos = [0, 0] }, K) {
+    const J0 = (n + 2) * I / (2 * Math.PI * R * R);
+    const ienc = s => I * (Math.min(s, R) / R) ** (n + 2);
+    return {
+      q: 0, I, R, J0, cil: true, mag: true,
+      J: s => (s < R ? J0 * (s / R) ** n : 0),
+      B(p) {
+        const dx = p[0] - pos[0], dy = p[1] - pos[1], s2 = dx * dx + dy * dy; if (s2 < 1e-24) return [0, 0, 0];
+        const f = K.mu0 * ienc(Math.sqrt(s2)) / (2 * Math.PI * s2);   // Bφ/s, y â_φ·s = (−dy, dx)
+        return [-f * dy, f * dx, 0];
+      },
+      qenc: () => 0,
+      ienc: Rg => (Math.hypot(...pos) < 1e-12 ? ienc(Rg) : Math.hypot(...pos) + R <= Rg ? I : 0),
+    };
+  },
+  // hilo infinito con corriente I (signo = sentido en z) paralelo a z por (x, y) = pos
+  'hilo-corriente'({ I, pos = [0, 0] }, K) {
+    return {
+      q: 0, I, cil: true, mag: true,
+      B(p) {
+        const dx = p[0] - pos[0], dy = p[1] - pos[1], s2 = dx * dx + dy * dy; if (s2 < 1e-24) return [0, 0, 0];
+        const f = K.mu0 * I / (2 * Math.PI * s2);
+        return [-f * dy, f * dx, 0];
+      },
+      qenc: () => 0,
+      ienc: Rg => (Math.hypot(...pos) < Rg ? I : 0),
+    };
+  },
   // plano infinito z = z0; V = 0 en el plano
   plano({ sigma, z0 = 0 }, K) {
     const E0 = sigma / (2 * K.eps0);
@@ -92,7 +122,7 @@ const FUENTES = {
 
 export const TIPOS_FUENTE = Object.keys(FUENTES);
 
-const NO_NUM = new Set(['tipo', 'id', 'tras', 'ver', 'et']);
+const NO_NUM = new Set(['tipo', 'id', 'tras', 'trasCampo', 'ver', 'et']);
 
 /** Evalúa los campos de una pieza (números o expresiones) contra el ámbito. */
 export function resolverPieza(pz, amb) {
@@ -125,6 +155,13 @@ export function crearCampo(piezas, amb) {
     Er: r => E([r, 0, 0])[0],
     /** Carga encerrada por una esfera de radio R centrada en el origen. */
     qenc: R => fuentes.reduce((acc, s) => acc + s.qenc(R), 0),
+    /** Corriente encerrada por una circunferencia de radio R en z = 0, centrada en el eje. */
+    ienc: R => fuentes.reduce((acc, s) => acc + (s.ienc ? s.ienc(R) : 0), 0),
+    /** Componente azimutal de B en (r, 0, 0) (allí â_φ = ŷ). */
+    Bphi: r => suma('B', [r, 0, 0])[1],
+    /** J_z de los conductores en (r, 0, 0). */
+    Jz: r => fuentes.reduce((acc, s) => acc + (s.J ? s.J(r) : 0), 0),
+    magnetico: fuentes.some(s => s.mag),
   };
 }
 

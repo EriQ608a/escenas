@@ -14,9 +14,15 @@ const KATEX = 'https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/';
 // Paquetes de dominio: dan las ayudas de física para las expresiones y los dibujantes 3D.
 const PAQUETES = {
   async em() {
-    const [{ crearCampo }, { dibujarEM }] = await Promise.all([import('./em.js'), import('./dibujo-em.js')]);
+    const [{ crearCampo, TIPOS_FUENTE }, { dibujarEM }] = await Promise.all([import('./em.js'), import('./dibujo-em.js')]);
+    // las fuentes con `tras` (p. ej. el hilo que se añade en el último apartado) no entran en las
+    // lecturas ni en las gráficas: solo las dibuja dibujo-em.js cuando se revelan
+    const base = def => (def.piezas || []).filter(p => !(p.tras && TIPOS_FUENTE.includes(p.tipo)));
     return {
-      ayudas: def => amb => { const c = crearCampo(def.piezas || [], amb); return { E: c.E, V: c.V, B: c.B, Er: c.Er, qenc: c.qenc, campo: c }; },
+      ayudas: def => amb => {
+        const c = crearCampo(base(def), amb);
+        return { E: c.E, V: c.V, B: c.B, Er: c.Er, qenc: c.qenc, ienc: c.ienc, Bphi: c.Bphi, Jz: c.Jz, campo: c };
+      },
       dibujar: dibujarEM,
     };
   },

@@ -2,7 +2,7 @@
 // Piezas (esfera, corteza, gaussiana-esfera), líneas de campo, flujo sobre la gaussiana,
 // corte con mapa de color + equipotenciales, elemento dS arrastrable y partículas de carga.
 // Toda dirección o valor pasa por la regla de revelado del estado (`tras`).
-import { trazarLinea } from './em.js';
+import { trazarLinea, crearCampo, TIPOS_FUENTE } from './em.js';
 import { formatear } from './expr.js';
 
 const fib = n => Array.from({ length: n }, (_, i) => {
@@ -34,7 +34,7 @@ export function dibujarEM(vista, estado, def, op = {}) {
   const geoCil = new THREE.CylinderGeometry(1, 1, 1, 64, 1, false).rotateX(Math.PI / 2);
   const geoTubo = new THREE.CylinderGeometry(1, 1, 1, 64, 1, true).rotateX(Math.PI / 2);
   const geoAlambreCil = new THREE.WireframeGeometry(new THREE.CylinderGeometry(1, 1, 1, 24, 4, false)).rotateX(Math.PI / 2);
-  const esCil = t => ['cilindro', 'corteza-cilindro', 'gaussiana-cilindro'].includes(t);
+  const esCil = t => ['cilindro', 'corteza-cilindro', 'gaussiana-cilindro', 'conductor', 'hilo-corriente'].includes(t);
   const Lvis = () => dib.Lvis ?? 2 * limite;   // largo visible de los cilindros «infinitos» (m)
   const mat = (Tipo, tok, o) => vista.tintar(new Tipo({ transparent: true, side: THREE.DoubleSide, ...o }), tok);
 
@@ -42,11 +42,28 @@ export function dibujarEM(vista, estado, def, op = {}) {
   const objs = [];
   const amb = () => estado.ambito();
   const evalPieza = (pz, k) => (typeof pz[k] === 'string' ? estado.valor(pz[k]) : pz[k]);
+  const posDe = pz => (pz.pos || [0, 0]).map(c => (typeof c === 'string' ? estado.valor(c) : c));
+  const RHILO = 0.004;   // radio visible de un hilo (m)
+
+  // campo que se dibuja: las fuentes con `tras` (p. ej. el hilo del último apartado) solo entran al revelarse
+  const conTras = p => p.tras && TIPOS_FUENTE.includes(p.tipo);
+  // `trasCampo`: la pieza se ve con `tras` pero su campo no entra hasta `trasCampo` (no adelantar la superposición)
+  const sumaCampo = p => !conTras(p) || estado.permitido(p.trasCampo ?? p.tras);
+  const activas = () => (def.piezas || []).filter(sumaCampo);
+  const claveFuentes = () => (def.piezas || []).map(p => (sumaCampo(p) ? 1 : 0) + (!p.tras || estado.permitido(p.tras) ? 2 : 0)).join('');
+  let campoAct = null, claveAct = '';
+  function campoDib() {
+    if (!(def.piezas || []).some(conTras)) return estado.ayudas().campo;
+    const k = JSON.stringify([estado.params, claveFuentes()]);
+    if (k !== claveAct) { claveAct = k; campoAct = crearCampo(activas(), estado.ambito()); }
+    return campoAct;
+  }
+  const vec = c => (c.magnetico ? c.B : c.E);   // el campo que pintan líneas, flechas y mapa
 
   let iEtq = 0;
   for (const pz of def.piezas || []) {
     const o = { pz, grupo: new THREE.Group() };
-    if (!pz.tipo.startsWith('gaussiana')) o.ang = (135 - 32 * iEtq++) * Math.PI / 180;
+    if (!pz.tipo.startsWith('gaussiana') && pz.tipo !== 'amperiana') o.ang = (135 - 32 * iEtq++) * Math.PI / 180;
     o.cil = esCil(pz.tipo);
     raiz.add(o.grupo);
     if (pz.tipo === 'esfera') {
@@ -78,6 +95,29 @@ export function dibujarEM(vista, estado, def, op = {}) {
       o.malla = new THREE.Mesh(geoTubo, recortar(mat(THREE.MeshLambertMaterial, tok, { opacity: 0.16, depthWrite: false })));
       o.alambre = new THREE.LineSegments(geoAlambreCil, recortar(mat(THREE.LineBasicMaterial, tok, { opacity: 0.28 })));
       o.grupo.add(o.malla, o.alambre);
+    } else if (pz.tipo === 'conductor') {
+      const tok = evalPieza(pz, 'I') >= 0 ? '--esc-tinta' : '--esc-neg';
+      o.malla = new THREE.Mesh(geoCil, recortar(mat(THREE.MeshLambertMaterial, tok, { opacity: 0.3, depthWrite: false })));
+      o.grupo.add(o.malla);
+    } else if (pz.tipo === 'hilo-corriente') {
+      o.hilo = true;
+      const tok = evalPieza(pz, 'I') >= 0 ? '--esc-tinta' : '--esc-neg';
+      o.malla = new THREE.Mesh(geoCil, mat(THREE.MeshLambertMaterial, tok, { opacity: 0.85 }));
+      o.grupo.add(o.malla);
+    } else if (pz.tipo === 'amperiana') {
+      // circunferencia de radio r en z = 0 y el disco que abraza (la superficie de I_enc)
+      o.amp = true;
+      const circ = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 129 }, (_, i) => {
+        const f = 2 * Math.PI * i / 128; return new THREE.Vector3(Math.cos(f), Math.sin(f), 0);
+      }));
+      o.alambre = new THREE.Line(circ, mat(THREE.LineBasicMaterial, '--esc-acento', { opacity: 0.95 }));
+      o.malla = new THREE.Mesh(new THREE.CircleGeometry(1, 96), mat(THREE.MeshBasicMaterial, '--esc-acento', { opacity: 0.1, depthWrite: false }));
+      o.grupo.add(o.malla, o.alambre);
+      o.radio = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)]),
+        vista.tintar(new THREE.LineDashedMaterial({ dashSize: 0.08, gapSize: 0.06 }), '--esc-acento'));
+      o.radio.computeLineDistances();
+      o.punto = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), vista.tintar(new THREE.MeshBasicMaterial(), '--esc-acento'));
+      raiz.add(o.radio, o.punto);
     } else if (pz.tipo === 'gaussiana-cilindro') {
       o.gauss = true;
       // cilindro cerrado: las tapas se ven (su flujo es 0 y no llevan flechas)
@@ -90,10 +130,10 @@ export function dibujarEM(vista, estado, def, op = {}) {
       o.punto = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), vista.tintar(new THREE.MeshBasicMaterial(), '--esc-acento'));
       raiz.add(o.radio, o.punto);
     }
-    if (pz.et) { o.lbl = vista.etiqueta(pz.et, o.gauss ? 'acc' : ''); raiz.add(o.lbl); }
+    if (pz.et) { o.lbl = vista.etiqueta(pz.et, o.gauss || o.amp ? 'acc' : ''); raiz.add(o.lbl); }
     objs.push(o);
   }
-  const gauss = objs.find(o => o.gauss);
+  const gauss = objs.find(o => o.gauss || o.amp);   // la superficie (o el camino) de la ley
 
   // ---------- partículas de carga (datos del enunciado: siempre visibles) ----------
   const geoP = new THREE.SphereGeometry(0.028, 8, 6);
@@ -127,6 +167,26 @@ export function dibujarEM(vista, estado, def, op = {}) {
         }
       }
     }
+    // corriente: flechitas según ±z, más densas donde J es mayor (dato del enunciado)
+    const geoJ = new THREE.ConeGeometry(0.028, 0.1, 8), m4j = new THREE.Matrix4(), uno = new THREE.Vector3(1, 1, 1);
+    const qArr = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1));
+    const qAb = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, -1));
+    for (const o of objs) {
+      const { pz } = o;
+      if (pz.tipo !== 'conductor' && pz.tipo !== 'hilo-corriente') continue;
+      if (conTras(pz) && !estado.permitido(pz.tras)) continue;
+      const I = evalPieza(pz, 'I'), L = Lvis(), [px, py] = posDe(pz), rnd = azar(semilla++), pts = [];
+      if (pz.tipo === 'conductor') {
+        const R = evalPieza(pz, 'R'), n = pz.n !== undefined ? evalPieza(pz, 'n') : 1;
+        for (let i = 0; i < 260; i++) {
+          const s = R * rnd() ** (1 / (n + 2)), f = 2 * Math.PI * rnd();   // densidad ∝ J·s ∝ s^(n+1)
+          pts.push([px + s * Math.cos(f), py + s * Math.sin(f), (rnd() - 0.5) * L]);
+        }
+      } else for (let j = 0; j < 11; j++) pts.push([px, py, (j / 10 - 0.5) * L]);
+      const im = new THREE.InstancedMesh(geoJ, recortar(vista.tintar(new THREE.MeshBasicMaterial(), I >= 0 ? '--esc-tinta' : '--esc-neg')), pts.length);
+      pts.forEach((p, i) => im.setMatrixAt(i, m4j.compose(new THREE.Vector3(p[0] * S, p[1] * S, p[2] * S), I >= 0 ? qArr : qAb, uno)));
+      particulas.add(im);
+    }
     for (const [lista, tok] of [[mas, '--esc-tinta'], [menos, '--esc-neg']]) {
       if (!lista.length) continue;
       const im = new THREE.InstancedMesh(geoP, recortar(vista.tintar(new THREE.MeshBasicMaterial(), tok)), lista.length);
@@ -140,8 +200,9 @@ export function dibujarEM(vista, estado, def, op = {}) {
   const limite = dib.lineas?.limite ?? (def.vars && Object.values(def.vars)[0]?.max) ?? 0.4;
   let trazos = [];
   function trazarTodas() {
-    const campo = estado.ayudas().campo;
+    const campo = campoDib();
     if (!campo) return;
+    if (campo.magnetico) { trazarB(campo); return; }
     if (campo.fuentes.some(f => f.cil)) {
       // simetría cilíndrica: líneas radiales en planos z = cte; se cortan donde E ≈ 0
       trazos = [];
@@ -180,6 +241,41 @@ export function dibujarEM(vista, estado, def, op = {}) {
       }
     }
   }
+  // líneas de B: cerradas, en planos z = cte; semillas sobre el eje x, sin repetir lazos
+  function trazarB(campo) {
+    trazos = [];
+    const n = dib.lineas?.n ?? 7, paso = limite / 220, L = Lvis(), sep = limite / n;
+    const ejes = campo.fuentes.filter(f => f.mag).map(f => f.val.pos || [0, 0]);
+    const dir = (x, y) => { const b = campo.B([x, y, 0]), m = Math.hypot(b[0], b[1]); return m < 1e-30 ? null : [b[0] / m, b[1] / m]; };
+    const rk = (x, y, sg) => {
+      const k1 = dir(x, y); if (!k1) return null;
+      const k2 = dir(x + sg * paso / 2 * k1[0], y + sg * paso / 2 * k1[1]); if (!k2) return null;
+      const k3 = dir(x + sg * paso / 2 * k2[0], y + sg * paso / 2 * k2[1]); if (!k3) return null;
+      const k4 = dir(x + sg * paso * k3[0], y + sg * paso * k3[1]); if (!k4) return null;
+      return [x + sg * paso / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]), y + sg * paso / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])];
+    };
+    const lazos = [];
+    const usado = (x, y) => lazos.some(l => l.some(p => Math.hypot(p[0] - x, p[1] - y) < sep * 0.45));
+    for (let i = -n; i <= n; i++) {
+      if (!i) continue;
+      const x0 = i * sep * 0.999, y0 = 0;
+      if (ejes.some(e => Math.hypot(x0 - e[0], y0 - e[1]) < sep * 0.3) || usado(x0, y0)) continue;
+      let ida = [[x0, y0]], cerrado = false;
+      for (let k = 0, x = x0, y = y0; k < 4000; k++) {
+        const q = rk(x, y, 1); if (!q) break;
+        if (Math.hypot(...q) > limite) break;
+        if (k > 20 && Math.hypot(q[0] - x0, q[1] - y0) < paso * 1.5) { ida.push([x0, y0]); cerrado = true; break; }
+        ida.push(q); [x, y] = q;
+      }
+      if (!cerrado) {
+        const vuelta = [];
+        for (let k = 0, x = x0, y = y0; k < 4000; k++) { const q = rk(x, y, -1); if (!q || Math.hypot(...q) > limite) break; vuelta.push(q); [x, y] = q; }
+        ida = vuelta.reverse().concat(ida);
+      }
+      if (ida.length > 2) lazos.push(ida);
+    }
+    for (const zf of [-0.35, 0, 0.35]) for (const l of lazos) trazos.push(l.map(([x, y]) => [x, y, zf * L]));
+  }
   const lineas = new THREE.LineSegments(new THREE.BufferGeometry(), vista.tintar(new THREE.LineBasicMaterial({ transparent: true, opacity: 0.5 }), '--esc-tinta'));
   const conos = new THREE.InstancedMesh(new THREE.ConeGeometry(0.045, 0.14, 10), vista.tintar(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.7 }), '--esc-tinta'), 2000);
   raiz.add(lineas, conos);
@@ -199,8 +295,8 @@ export function dibujarEM(vista, estado, def, op = {}) {
         acum += dl;
         if (acum >= cada && nc < conos.count && dl > 0) {
           acum = 0;
-          // el cono apunta en el sentido de E (la línea puede ir trazada al revés)
-          const E = estado.ayudas().campo.E([mx, my, mz]);
+          // el cono apunta en el sentido del campo (la línea puede ir trazada al revés)
+          const E = vec(campoDib())([mx, my, mz]);
           v.set(E[0], E[1], E[2]).normalize();
           q.setFromUnitVectors(arriba, v);
           m4.compose(new THREE.Vector3(mx * S, my * S, mz * S), q, new THREE.Vector3(1, 1, 1));
@@ -223,10 +319,11 @@ export function dibujarEM(vista, estado, def, op = {}) {
   });
   let Emax = 1;
   function calcularEmax() {
-    const campo = estado.ayudas().campo; if (!campo) return;
+    const campo = campoDib(); if (!campo) return;
+    const F = vec(campo);
     const vd = def.vars ? Object.values(def.vars)[0] : { min: 0.01, max: limite };
     Emax = 0;
-    for (let i = 0; i <= 200; i++) { const r = vd.min + (vd.max - vd.min) * i / 200; Emax = Math.max(Emax, Math.hypot(...campo.E([r, 0, 0])), Math.hypot(...campo.E([0, r, 0]))); }
+    for (let i = 0; i <= 200; i++) { const r = vd.min + (vd.max - vd.min) * i / 200; Emax = Math.max(Emax, Math.hypot(...F([r, 0, 0])), Math.hypot(...F([0, r, 0]))); }
     Emax ||= 1;
   }
   const largo = E => 0.12 + 1.3 * Math.sqrt(Math.min(1, E / Emax));
@@ -253,12 +350,12 @@ export function dibujarEM(vista, estado, def, op = {}) {
   let claveMapa = '';
   function pintarMapa() {
     if (!dib.mapa) return;
-    const clave = JSON.stringify([estado.params, estado.apartados.map(a => estado.como(a.k)), document.documentElement.dataset.theme]);
+    const clave = JSON.stringify([estado.params, estado.apartados.map(a => estado.como(a.k)), document.documentElement.dataset.theme, claveFuentes()]);
     if (clave === claveMapa) return; claveMapa = clave;
-    const campo = estado.ayudas().campo;
+    const campo = campoDib();
     const ok = estado.permitidoEn(mapaDef.tras);
     const papel = hex('--esc-papel'), suave = hex('--esc-tinta'), linea = hex('--esc-linea');
-    const magn = mapaDef.magnitud === 'V' ? p => campo.V(p) : p => Math.hypot(...campo.E(p));
+    const magn = mapaDef.magnitud === 'V' ? p => campo.V(p) : mapaDef.magnitud === 'B' ? p => Math.hypot(...campo.B(p)) : p => Math.hypot(...campo.E(p));
     // escala única para las dos caras
     const W = 140, H = 280;
     const muestras = caras.map(({ cara }) => {
@@ -309,13 +406,13 @@ export function dibujarEM(vista, estado, def, op = {}) {
       }
       tex.needsUpdate = true;
     });
-    const u = mapaDef.magnitud === 'V' ? 'V' : 'N/C';
-    leyenda.innerHTML = `<span>${mapaDef.magnitud === 'V' ? 'V' : '|E|'}</span><i></i><span>${todo ? formatear(vmax, u, 2) : '?'}</span>`;
+    const u = { V: 'V', B: 'T' }[mapaDef.magnitud] || 'N/C';
+    leyenda.innerHTML = `<span>${{ V: 'V', B: '|B|' }[mapaDef.magnitud] || '|E|'}</span><i></i><span>${todo ? formatear(vmax, u, 2) : '?'}</span>`;
   }
 
   // ---------- elemento dS arrastrable ----------
   let dS = null;
-  if (dib.dS && gauss && !gauss.cil) {
+  if (dib.dS && gauss && !gauss.cil && !gauss.amp) {
     const parche = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat(THREE.MeshBasicMaterial, '--esc-acento', { opacity: 0.75, depthWrite: false }));
     const normal = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 0.7);
     vista.tintar(normal.line.material, '--esc-tenue'); vista.tintar(normal.cone.material, '--esc-tenue');
@@ -352,22 +449,32 @@ export function dibujarEM(vista, estado, def, op = {}) {
   // ---------- actualizar todo según el estado ----------
   let claveParams = '', claveRes = '';
   function actualizar() {
-    const kp = JSON.stringify(estado.params);
+    const kp = JSON.stringify([estado.params, claveFuentes()]);
     const kr = JSON.stringify(estado.apartados.map(a => estado.como(a.k)));
     if (kp !== claveParams) { claveParams = kp; hacerParticulas(); trazarTodas(); calcularEmax(); claveRes = ''; }
     if (kr !== claveRes) { claveRes = kr; pintarLineas(); }
     pintarMapa();
 
-    const campo = estado.ayudas().campo;
+    const campo = campoDib(), F = vec(campo);
     for (const o of objs) {
       const { pz } = o;
-      const R = evalPieza(pz, 'R') * S;
+      const R = (o.hilo ? (pz.R !== undefined ? evalPieza(pz, 'R') : RHILO) : evalPieza(pz, 'R')) * S;
+      if (o.hilo || pz.tipo === 'conductor') { const [px, py] = posDe(pz); o.grupo.position.set(px * S, py * S, 0); }
+      if (o.hilo) o.grupo.visible = !conTras(pz) || estado.permitido(pz.tras);
+      if (o.amp) {
+        o.grupo.scale.set(R, R, 1);
+        o.grupo.visible = o.radio.visible = o.punto.visible = estado.permitido(pz.tras);
+        o.radio.scale.setScalar(R); o.punto.position.set(R, 0, 0);
+        if (o.lbl) { o.lbl.position.set(R + 0.12, -0.16, 0); o.lbl.visible = o.grupo.visible; }
+        continue;
+      }
       if (o.cil) {
         const L = (pz.L !== undefined ? evalPieza(pz, 'L') : (o.gauss ? 0.6 : 1) * Lvis()) * S;
         o.grupo.scale.set(R, R, L);
         if (o.interior) { const Ri = evalPieza(pz, 'Ri') * S; o.interior.scale.set(Ri, Ri, L); }
       } else o.grupo.scale.setScalar(R);
-      if (o.lbl && o.ang !== undefined) o.lbl.position.set(R * Math.cos(o.ang), R * Math.sin(o.ang) + 0.1, 0);
+      if (o.lbl && o.hilo) { const [px, py] = posDe(pz); o.lbl.position.set(px * S + 0.15, py * S + 0.25, 0); o.lbl.visible = o.grupo.visible; }
+      else if (o.lbl && o.ang !== undefined) o.lbl.position.set(R * Math.cos(o.ang), R * Math.sin(o.ang) + 0.1, 0);
       if (o.gauss) {
         const sabe = estado.permitido(pz.tras);
         o.grupo.visible = sabe;
@@ -389,7 +496,9 @@ export function dibujarEM(vista, estado, def, op = {}) {
     const sabeF = verG && capas.flujo && estado.permitido(dib.flujo?.tras);
     // puntos de la superficie con su normal: esfera entera, o solo el lateral del cilindro (tapas: flujo 0)
     let pts = [];
-    if (sabeF && gauss.cil) {
+    if (sabeF && gauss.amp) {
+      for (let k = 0; k < 16; k++) { const f = 2 * Math.PI * k / 16; pts.push({ p: [Rg * Math.cos(f), Rg * Math.sin(f), 0], n: null }); }
+    } else if (sabeF && gauss.cil) {
       const Lg = (gauss.pz.L !== undefined ? evalPieza(gauss.pz, 'L') : 0.6 * Lvis());
       for (const zf of [-0.35, 0, 0.35]) for (let k = 0; k < 12; k++) {
         const f = 2 * Math.PI * k / 12, n = [Math.cos(f), Math.sin(f), 0];
@@ -398,11 +507,11 @@ export function dibujarEM(vista, estado, def, op = {}) {
     } else if (sabeF) pts = dirs.map(d => ({ p: d.map(c => c * Rg), n: d }));
     flechas.forEach((a, i) => {
       a.visible = !!sabeF && !!pts[i]; if (!a.visible) return;
-      const { p, n } = pts[i], E = campo.E(p), m = Math.hypot(...E);
+      const { p, n } = pts[i], E = F(p), m = Math.hypot(...E);
       if (m < 1e-12 || m < Emax * 1e-4) { a.visible = false; return; }
       const u = new THREE.Vector3(E[0] / m, E[1] / m, E[2] / m), len = largo(m);
-      const sale = u.dot(new THREE.Vector3(...n)) >= 0;
-      const base = new THREE.Vector3(...p).multiplyScalar(S).add(new THREE.Vector3(...n).multiplyScalar(sale ? 0 : len));
+      const sale = !n || u.dot(new THREE.Vector3(...n)) >= 0;   // en la amperiana (n = null) nace en el camino
+      const base = new THREE.Vector3(...p).multiplyScalar(S).add(n ? new THREE.Vector3(...n).multiplyScalar(sale ? 0 : len) : new THREE.Vector3());
       a.position.copy(base); a.setDirection(u); a.setLength(len, Math.min(0.2, len * 0.45), Math.min(0.1, len * 0.22));
     });
     if (gauss?.lbl && op.leer && dib.flujo?.lectura) {

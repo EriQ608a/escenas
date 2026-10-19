@@ -321,7 +321,7 @@ export function montarPaneles(host, estado, def, op = {}) {
     vista = v; dibujo = d;
     for (const k of Object.keys(d.capas)) {
       if (!def.dibujar || !(k in def.dibujar)) continue;
-      const b = h('button', 'esc-chip', NOMBRES_CAPA[k] || k); b.dataset.c = k;
+      const b = h('button', 'esc-chip', def.dibujar[k]?.nombre || NOMBRES_CAPA[k] || k); b.dataset.c = k;
       b.onclick = () => d.capa(k, !d.capas[k]) || actualizar();
       capasEl.append(b);
     }

@@ -94,3 +94,30 @@ test('corteza cilíndrica', () => {
   cerca(c.Er(0.2), 1e-6 * 2 * Math.PI * 0.1 / (2 * Math.PI * CONSTANTES.eps0 * 0.2), 1e-9, 'E fuera');
   cerca(c.qenc(0.2), 1e-6 * 2 * Math.PI * 0.1, 1e-12, 'λ');
 });
+
+// S12 Ej. 4: conductor macizo a = 4 cm, I = 12 A en +z, J = J0·ρ/a
+test('s12ej4: conductor con J ∝ ρ (J0, I_enc, B dentro y fuera)', () => {
+  const amb4 = { ...CONSTANTES, a: 0.04, I: 12 };
+  const c = crearCampo([{ tipo: 'conductor', R: 'a', I: 'I', n: 1 }, { tipo: 'amperiana', R: 'r' }], amb4);
+  cerca(c.fuentes[0].J0, 3 * 12 / (2 * Math.PI * 0.04 ** 2), 1e-9, 'J0');
+  cerca(c.fuentes[0].J0, 3581, 1e-3, 'J0 numérico');
+  cerca(c.ienc(0.02), 12 * 0.125, 1e-9, 'I_enc(a/2) = I/8');
+  cerca(c.ienc(0.1), 12, 1e-12, 'I_enc fuera = I');
+  cerca(c.Bphi(0.04), 60e-6, 1e-3, 'B(a) = 60 µT');
+  cerca(c.Bphi(0.04 - 1e-9), c.Bphi(0.04 + 1e-9), 1e-6, 'continuo en a');
+  cerca(c.Bphi(0.02), c.Bphi(0.04) / 4, 1e-9, 'B ∝ ρ² dentro');
+  cerca(c.Bphi(0.08), c.Bphi(0.04) / 2, 1e-9, 'B ∝ 1/ρ fuera');
+  const [bx, by, bz] = c.B([0, 0.03, 0]);
+  assert.ok(bx < 0 && Math.abs(by) < 1e-20 && bz === 0, 'azimutal: en +y apunta a −x');
+  assert.equal(c.magnetico, true);
+});
+
+test('s12ej4 (f): hilo con corriente opuesta, se suman entre ejes y se oponen fuera', () => {
+  const amb4 = { ...CONSTANTES, a: 0.04, I: 12 };
+  const c1 = crearCampo([{ tipo: 'conductor', R: 'a', I: 'I' }], amb4);
+  const c = crearCampo([{ tipo: 'conductor', R: 'a', I: 'I' }, { tipo: 'hilo-corriente', I: '-I', pos: [0.08, 0] }], amb4);
+  assert.ok(c.Bphi(0.06) > c1.Bphi(0.06), 'entre los ejes se suman');
+  const B2 = x => c.Bphi(x) - c1.Bphi(x);   // lo que aporta el hilo
+  assert.ok(B2(0.06) * c1.Bphi(0.06) > 0, 'entre los ejes, mismo sentido');
+  assert.ok(B2(0.12) * c1.Bphi(0.12) < 0, 'por fuera, del lado del hilo, sentidos opuestos');
+});
