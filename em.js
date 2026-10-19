@@ -53,6 +53,31 @@ const FUENTES = {
       qenc: () => 0,
     };
   },
+  // cilindro infinito de eje z por (x, y) = pos, ρ uniforme entre Ri (0 = macizo) y R.
+  // qenc(Rg) = carga POR METRO dentro de un cilindro coaxial de radio Rg. V con referencia en s = ref.
+  cilindro({ R, Ri = 0, rho, pos = [0, 0], ref = 1 }, K) {
+    const lam = s => (s <= Ri ? 0 : rho * Math.PI * (Math.min(s, R) ** 2 - Ri * Ri));
+    const lt = lam(R), c = rho / (2 * K.eps0);
+    const VR = -lt / (2 * Math.PI * K.eps0) * Math.log(R / ref);
+    const Vs = s => (s >= R ? -lt / (2 * Math.PI * K.eps0) * Math.log(s / ref)
+      : VR + c * ((R * R - Math.max(s, Ri) ** 2) / 2 - Ri * Ri * Math.log(R / Math.max(s, Ri))));
+    return {
+      q: lt, R, Ri, cil: true,
+      E(p) { const dx = p[0] - pos[0], dy = p[1] - pos[1], s = Math.hypot(dx, dy); if (s < 1e-15) return [0, 0, 0]; const Es = lam(s) / (2 * Math.PI * K.eps0 * s); return [Es * dx / s, Es * dy / s, 0]; },
+      V(p) { return Vs(Math.max(Math.hypot(p[0] - pos[0], p[1] - pos[1]), 1e-9)); },
+      qenc: Rg => lam(Rg),
+    };
+  },
+  // corteza cilíndrica (σ en s = R), eje z; qenc por metro
+  'corteza-cilindro'({ R, sigma, pos = [0, 0], ref = 1 }, K) {
+    const lt = sigma * 2 * Math.PI * R;
+    return {
+      q: lt, R, cil: true,
+      E(p) { const dx = p[0] - pos[0], dy = p[1] - pos[1], s2 = dx * dx + dy * dy; if (s2 <= R * R) return [0, 0, 0]; const f = lt / (2 * Math.PI * K.eps0 * s2); return [f * dx, f * dy, 0]; },
+      V(p) { const s = Math.max(Math.hypot(p[0] - pos[0], p[1] - pos[1]), R); return -lt / (2 * Math.PI * K.eps0) * Math.log(s / ref); },
+      qenc: Rg => (Rg > R ? lt : 0),
+    };
+  },
   // plano infinito z = z0; V = 0 en el plano
   plano({ sigma, z0 = 0 }, K) {
     const E0 = sigma / (2 * K.eps0);

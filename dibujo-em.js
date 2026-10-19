@@ -30,6 +30,12 @@ export function dibujarEM(vista, estado, def, op = {}) {
 
   const geoEsfera = new THREE.SphereGeometry(1, 64, 40);
   const geoAlambre = new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 20, 10));
+  // cilindros: eje z (el del revelado `ps`), radio 1 y largo 1; se escalan con (R, R, L)
+  const geoCil = new THREE.CylinderGeometry(1, 1, 1, 64, 1, false).rotateX(Math.PI / 2);
+  const geoTubo = new THREE.CylinderGeometry(1, 1, 1, 64, 1, true).rotateX(Math.PI / 2);
+  const geoAlambreCil = new THREE.WireframeGeometry(new THREE.CylinderGeometry(1, 1, 1, 24, 4, false)).rotateX(Math.PI / 2);
+  const esCil = t => ['cilindro', 'corteza-cilindro', 'gaussiana-cilindro'].includes(t);
+  const Lvis = () => dib.Lvis ?? 2 * limite;   // largo visible de los cilindros «infinitos» (m)
   const mat = (Tipo, tok, o) => vista.tintar(new Tipo({ transparent: true, side: THREE.DoubleSide, ...o }), tok);
 
   // ---------- piezas ----------
@@ -40,7 +46,8 @@ export function dibujarEM(vista, estado, def, op = {}) {
   let iEtq = 0;
   for (const pz of def.piezas || []) {
     const o = { pz, grupo: new THREE.Group() };
-    if (pz.tipo !== 'gaussiana-esfera') o.ang = (135 - 32 * iEtq++) * Math.PI / 180;
+    if (!pz.tipo.startsWith('gaussiana')) o.ang = (135 - 32 * iEtq++) * Math.PI / 180;
+    o.cil = esCil(pz.tipo);
     raiz.add(o.grupo);
     if (pz.tipo === 'esfera') {
       o.malla = new THREE.Mesh(geoEsfera, recortar(mat(THREE.MeshLambertMaterial, '--esc-tinta', { opacity: 0.42, depthWrite: false })));
@@ -55,6 +62,28 @@ export function dibujarEM(vista, estado, def, op = {}) {
       o.alambre = new THREE.LineSegments(geoAlambre, recortar(mat(THREE.LineBasicMaterial, '--esc-acento', { opacity: 0.2 })));
       o.grupo.add(o.malla, o.alambre);
       // radio r en la cara del corte y punto P (lo único visible antes de saber qué superficie usar)
+      o.radio = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)]),
+        vista.tintar(new THREE.LineDashedMaterial({ dashSize: 0.08, gapSize: 0.06 }), '--esc-acento'));
+      o.radio.computeLineDistances();
+      o.punto = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), vista.tintar(new THREE.MeshBasicMaterial(), '--esc-acento'));
+      raiz.add(o.radio, o.punto);
+    } else if (pz.tipo === 'cilindro') {
+      const tok = evalPieza(pz, 'rho') >= 0 ? '--esc-tinta' : '--esc-neg';
+      const hueco = pz.Ri !== undefined;
+      o.malla = new THREE.Mesh(hueco ? geoTubo : geoCil, recortar(mat(THREE.MeshLambertMaterial, tok, { opacity: hueco ? 0.22 : 0.42, depthWrite: false })));
+      o.grupo.add(o.malla);
+      if (hueco) { o.interior = new THREE.Mesh(geoTubo, recortar(mat(THREE.MeshLambertMaterial, tok, { opacity: 0.22, depthWrite: false }))); raiz.add(o.interior); }
+    } else if (pz.tipo === 'corteza-cilindro') {
+      const tok = evalPieza(pz, 'sigma') >= 0 ? '--esc-tinta' : '--esc-neg';
+      o.malla = new THREE.Mesh(geoTubo, recortar(mat(THREE.MeshLambertMaterial, tok, { opacity: 0.16, depthWrite: false })));
+      o.alambre = new THREE.LineSegments(geoAlambreCil, recortar(mat(THREE.LineBasicMaterial, tok, { opacity: 0.28 })));
+      o.grupo.add(o.malla, o.alambre);
+    } else if (pz.tipo === 'gaussiana-cilindro') {
+      o.gauss = true;
+      // cilindro cerrado: las tapas se ven (su flujo es 0 y no llevan flechas)
+      o.malla = new THREE.Mesh(geoCil, recortar(mat(THREE.MeshBasicMaterial, '--esc-acento', { opacity: 0.07, depthWrite: false })));
+      o.alambre = new THREE.LineSegments(geoAlambreCil, recortar(mat(THREE.LineBasicMaterial, '--esc-acento', { opacity: 0.3 })));
+      o.grupo.add(o.malla, o.alambre);
       o.radio = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)]),
         vista.tintar(new THREE.LineDashedMaterial({ dashSize: 0.08, gapSize: 0.06 }), '--esc-acento'));
       o.radio.computeLineDistances();
@@ -84,6 +113,18 @@ export function dibujarEM(vista, estado, def, op = {}) {
       } else if (pz.tipo === 'corteza') {
         const R = evalPieza(pz, 'R') * S, q = evalPieza(pz, 'sigma');
         for (const d of fib(220)) (q >= 0 ? mas : menos).push(d.map(c => c * R));
+      } else if (pz.tipo === 'cilindro') {
+        const R = evalPieza(pz, 'R'), Ri = pz.Ri !== undefined ? evalPieza(pz, 'Ri') : 0, q = evalPieza(pz, 'rho'), L = Lvis();
+        for (let i = 0; i < 160; i++) {
+          const s = Math.sqrt(Ri * Ri + (R * R - Ri * Ri) * rnd()), f = 2 * Math.PI * rnd(), z = (rnd() - 0.5) * L;
+          (q >= 0 ? mas : menos).push([s * Math.cos(f) * S, s * Math.sin(f) * S, z * S]);
+        }
+      } else if (pz.tipo === 'corteza-cilindro') {
+        const R = evalPieza(pz, 'R'), q = evalPieza(pz, 'sigma'), L = Lvis();
+        for (let i = 0; i < 36; i++) for (let j = 0; j < 9; j++) {
+          const f = 2 * Math.PI * (i + 0.5 * (j % 2)) / 36;
+          (q >= 0 ? mas : menos).push([R * Math.cos(f) * S, R * Math.sin(f) * S, (j / 8 - 0.5) * L * S]);
+        }
       }
     }
     for (const [lista, tok] of [[mas, '--esc-tinta'], [menos, '--esc-neg']]) {
@@ -101,6 +142,26 @@ export function dibujarEM(vista, estado, def, op = {}) {
   function trazarTodas() {
     const campo = estado.ayudas().campo;
     if (!campo) return;
+    if (campo.fuentes.some(f => f.cil)) {
+      // simetría cilíndrica: líneas radiales en planos z = cte; se cortan donde E ≈ 0
+      trazos = [];
+      const n = dib.lineas?.n ?? 12, L = Lvis(), paso = limite / 240;
+      let Em = 0; for (let s = paso; s <= limite; s += paso) Em = Math.max(Em, Math.hypot(...campo.E([s, 0, 0])));
+      const umbral = Em * 1e-4;
+      [-0.35, 0, 0.35].forEach((zf, iz) => {
+        for (let k = 0; k < n; k++) {
+          const f = 2 * Math.PI * k / n + iz * 0.21, c = Math.cos(f), sn = Math.sin(f);
+          let L1 = [];
+          for (let s = paso; s <= limite + 1e-12; s += paso) {
+            const p = [s * c, s * sn, zf * L];
+            if (Math.hypot(...campo.E(p)) > umbral) L1.push(p);
+            else { if (L1.length > 1) trazos.push(L1); L1 = []; }
+          }
+          if (L1.length > 1) trazos.push(L1);
+        }
+      });
+      return;
+    }
     const fuentes = campo.fuentes.filter(f => ['esfera', 'corteza', 'puntual'].includes(f.def.tipo) && Math.abs(f.q) > 0);
     if (!fuentes.length) { trazos = []; return; }
     const qref = Math.min(...fuentes.map(f => Math.abs(f.q)));
@@ -254,7 +315,7 @@ export function dibujarEM(vista, estado, def, op = {}) {
 
   // ---------- elemento dS arrastrable ----------
   let dS = null;
-  if (dib.dS && gauss) {
+  if (dib.dS && gauss && !gauss.cil) {
     const parche = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat(THREE.MeshBasicMaterial, '--esc-acento', { opacity: 0.75, depthWrite: false }));
     const normal = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 0.7);
     vista.tintar(normal.line.material, '--esc-tenue'); vista.tintar(normal.cone.material, '--esc-tenue');
@@ -301,7 +362,11 @@ export function dibujarEM(vista, estado, def, op = {}) {
     for (const o of objs) {
       const { pz } = o;
       const R = evalPieza(pz, 'R') * S;
-      o.grupo.scale.setScalar(R);
+      if (o.cil) {
+        const L = (pz.L !== undefined ? evalPieza(pz, 'L') : (o.gauss ? 0.6 : 1) * Lvis()) * S;
+        o.grupo.scale.set(R, R, L);
+        if (o.interior) { const Ri = evalPieza(pz, 'Ri') * S; o.interior.scale.set(Ri, Ri, L); }
+      } else o.grupo.scale.setScalar(R);
       if (o.lbl && o.ang !== undefined) o.lbl.position.set(R * Math.cos(o.ang), R * Math.sin(o.ang) + 0.1, 0);
       if (o.gauss) {
         const sabe = estado.permitido(pz.tras);
@@ -322,13 +387,22 @@ export function dibujarEM(vista, estado, def, op = {}) {
     const Rg = gauss ? estado.valor(gauss.pz.R) : 0;
     const verG = gauss && estado.permitido(gauss.pz.tras);
     const sabeF = verG && capas.flujo && estado.permitido(dib.flujo?.tras);
+    // puntos de la superficie con su normal: esfera entera, o solo el lateral del cilindro (tapas: flujo 0)
+    let pts = [];
+    if (sabeF && gauss.cil) {
+      const Lg = (gauss.pz.L !== undefined ? evalPieza(gauss.pz, 'L') : 0.6 * Lvis());
+      for (const zf of [-0.35, 0, 0.35]) for (let k = 0; k < 12; k++) {
+        const f = 2 * Math.PI * k / 12, n = [Math.cos(f), Math.sin(f), 0];
+        pts.push({ p: [n[0] * Rg, n[1] * Rg, zf * Lg], n });
+      }
+    } else if (sabeF) pts = dirs.map(d => ({ p: d.map(c => c * Rg), n: d }));
     flechas.forEach((a, i) => {
-      a.visible = !!sabeF; if (!sabeF) return;
-      const d = dirs[i], p = d.map(c => c * Rg), E = campo.E(p), m = Math.hypot(...E);
-      if (m < 1e-12) { a.visible = false; return; }
+      a.visible = !!sabeF && !!pts[i]; if (!a.visible) return;
+      const { p, n } = pts[i], E = campo.E(p), m = Math.hypot(...E);
+      if (m < 1e-12 || m < Emax * 1e-4) { a.visible = false; return; }
       const u = new THREE.Vector3(E[0] / m, E[1] / m, E[2] / m), len = largo(m);
-      const sale = u.dot(new THREE.Vector3(...d)) >= 0;
-      const base = new THREE.Vector3(...d).multiplyScalar(Rg * S + (sale ? 0 : len));
+      const sale = u.dot(new THREE.Vector3(...n)) >= 0;
+      const base = new THREE.Vector3(...p).multiplyScalar(S).add(new THREE.Vector3(...n).multiplyScalar(sale ? 0 : len));
       a.position.copy(base); a.setDirection(u); a.setLength(len, Math.min(0.2, len * 0.45), Math.min(0.1, len * 0.22));
     });
     if (gauss?.lbl && op.leer && dib.flujo?.lectura) {

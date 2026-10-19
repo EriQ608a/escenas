@@ -61,3 +61,36 @@ test('líneas: radiales hacia fuera y se paran en el límite', () => {
   assert.ok(Math.hypot(...fin) <= 0.41 && Math.hypot(...fin) > 0.38);
   assert.ok(Math.abs(fin[1]) < 1e-9 && Math.abs(fin[2]) < 1e-9, 'sigue radial');
 });
+
+// S12 Ej. 2: cilindro infinito, núcleo ρ1 = +8 µC/m³ (s < a = 2 cm) y anillo ρ2 = −8/3 µC/m³ (a < s < b = 4 cm)
+test('s12ej2: cilindro núcleo + anillo', () => {
+  const amb2 = { ...CONSTANTES, a: 0.02, b: 0.04, rho1: 8e-6, rho2: -8e-6 / 3 };
+  const c = crearCampo([
+    { tipo: 'cilindro', R: 'a', rho: 'rho1' },
+    { tipo: 'cilindro', Ri: 'a', R: 'b', rho: 'rho2' },
+    { tipo: 'gaussiana-cilindro', R: 'r' },
+  ], amb2);
+  const e0 = CONSTANTES.eps0;
+  cerca(c.qenc(0.02), 3.2e-9 * Math.PI, 1e-9, 'λ núcleo');
+  assert.ok(Math.abs(c.qenc(0.05)) < 1e-20, 'λ fuera = 0');
+  assert.ok(Math.abs(c.Er(0.05)) < 1e-9, 'E fuera = 0');
+  cerca(c.Er(0.02), 8e-6 * 0.02 / (2 * e0), 1e-6, 'E(a)');
+  cerca(c.Er(0.02), 9035, 0.002, 'E(a) ≈ 9,04 kV/m');
+  cerca(c.Er(0.01), 8e-6 * 0.01 / (2 * e0), 1e-9, 'E núcleo');
+  cerca(c.Er(0.03), (8e-6 * 0.02 ** 2 + (-8e-6 / 3) * (0.03 ** 2 - 0.02 ** 2)) / (2 * e0 * 0.03), 1e-9, 'E anillo');
+  cerca(c.Er(0.02 - 1e-9), c.Er(0.02 + 1e-9), 1e-6, 'continuo en a');
+  assert.ok(Math.abs(c.Er(0.04 - 1e-9)) < 1, 'llega a 0 en b');
+  const Ez = c.E([0.01, 0.01, 3]); assert.ok(Math.abs(Ez[2]) < 1e-12 && Math.abs(Ez[0] - Ez[1]) < 1e-9, 'radial en xy');
+  // V continuo y −dV/ds = E
+  const V = s => c.V([s, 0, 0]);
+  const dV = s => -(V(s + 1e-6) - V(s - 1e-6)) / 2e-6;
+  for (const s of [0.01, 0.02, 0.03]) cerca(dV(s), c.Er(s), 1e-3, `-dV/ds en ${s}`);
+  for (const s of [0.04, 0.05]) assert.ok(Math.abs(dV(s)) < 1, `-dV/ds ≈ 0 en ${s}`);
+});
+
+test('corteza cilíndrica', () => {
+  const c = crearCampo([{ tipo: 'corteza-cilindro', R: 0.1, sigma: 1e-6 }], CONSTANTES);
+  assert.equal(c.Er(0.05), 0);
+  cerca(c.Er(0.2), 1e-6 * 2 * Math.PI * 0.1 / (2 * Math.PI * CONSTANTES.eps0 * 0.2), 1e-9, 'E fuera');
+  cerca(c.qenc(0.2), 1e-6 * 2 * Math.PI * 0.1, 1e-12, 'λ');
+});
