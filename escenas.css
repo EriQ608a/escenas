@@ -20,8 +20,9 @@
   margin: 18px 0 26px;
   overflow: hidden;
 }
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .escena{ --esc-neg:#8fa0b0 } }
-:root[data-theme="dark"] .escena{ --esc-neg:#8fa0b0 }
+/* oscuro: data-theme (nota.html), data-mode (widget del chat) o preferencia del sistema */
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]):not([data-mode="light"]) .escena{ --esc-fondo:var(--panel,#1b1a18); --esc-papel:var(--bg,#141413); --esc-tinta:var(--ink,#ebe7df); --esc-suave:var(--soft,#b0aa9f); --esc-tenue:var(--faint,#7d786f); --esc-linea:var(--line,#2f2d29); --esc-acento:var(--accent,#e9875a); --esc-neg:#8fa0b0 } }
+:root[data-theme="dark"] .escena, :root[data-mode="dark"] .escena{ --esc-fondo:var(--panel,#1b1a18); --esc-papel:var(--bg,#141413); --esc-tinta:var(--ink,#ebe7df); --esc-suave:var(--soft,#b0aa9f); --esc-tenue:var(--faint,#7d786f); --esc-linea:var(--line,#2f2d29); --esc-acento:var(--accent,#e9875a); --esc-neg:#8fa0b0 }
 .escena *{ box-sizing:border-box }
 .escena button{ font:inherit; color:inherit }
 

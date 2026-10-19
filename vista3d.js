@@ -105,7 +105,7 @@ export function crearVista(host, op = {}) {
     });
   };
   const mo = new MutationObserver(retintar);
-  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-mode', 'class'] });
   const mq = matchMedia('(prefers-color-scheme: dark)');
   mq.addEventListener?.('change', retintar);
 
